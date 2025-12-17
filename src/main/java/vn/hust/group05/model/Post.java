@@ -4,12 +4,13 @@ public class Post {
     private String title;
     private String content;
     private String author;
-    private String timestamp; // Dạng chuỗi cho đơn giản: "2025-10-20"
-    private String platform;  // Nguồn: "Twitter", "Facebook", "YouTube"
+    private String timestamp;
+    private String platform;
     
-    // Các trường dùng cho kết quả phân tích sau này
-    private String sentiment; // "Positive", "Negative", "Neutral"
-    private String damageType; // "Flood", "Landslide", "None"
+    // Các trường phân tích
+    private String sentiment;   // Positive, Negative
+    private String damageType;  // Flood, Landslide...
+    private String reliefType;  // Food, Medicine, Shelter... (Mới thêm)
 
     public Post(String title, String content, String author, String timestamp, String platform) {
         this.title = title;
@@ -17,11 +18,11 @@ public class Post {
         this.author = author;
         this.timestamp = timestamp;
         this.platform = platform;
-        this.sentiment = "Unknown"; // Mặc định chưa phân tích
-        this.damageType = "Unknown";
+        this.sentiment = "Neutral";
+        this.damageType = "None";
+        this.reliefType = "None"; // Mặc định
     }
 
-    // Getter và Setter (Bắt buộc để hiển thị lên bảng)
     public String getTitle() { return title; }
     public String getContent() { return content; }
     public String getAuthor() { return author; }
@@ -29,12 +30,14 @@ public class Post {
     public String getPlatform() { return platform; }
     public String getSentiment() { return sentiment; }
     public String getDamageType() { return damageType; }
+    public String getReliefType() { return reliefType; } // Getter mới
 
     public void setSentiment(String sentiment) { this.sentiment = sentiment; }
     public void setDamageType(String damageType) { this.damageType = damageType; }
+    public void setReliefType(String reliefType) { this.reliefType = reliefType; } // Setter mới
     
     @Override
     public String toString() {
-        return "[" + platform + "] " + title + " (" + sentiment + ")";
+        return "[" + platform + "] " + title;
     }
 }

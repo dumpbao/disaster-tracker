@@ -14,24 +14,28 @@ public class DummyCollector implements IDataCollector {
         
         String[] sentiments = {"Positive", "Negative", "Neutral"};
         String[] platforms = {"Twitter", "Facebook", "YouTube"};
-        // Các loại thiệt hại theo đề bài Problem 2
-        String[] damages = {"Flood", "Landslide", "House Damaged", "People Affected", "None"};
+        String[] damages = {"Flood", "Landslide", "House Damaged", "None"};
+        // Danh mục cứu trợ (Problem 3)
+        String[] reliefs = {"Food", "Medicine", "Shelter", "Rescue Team", "Money", "None"};
 
-        for (int i = 1; i <= 30; i++) { // Tăng lên 30 bài cho nhiều
+        for (int i = 1; i <= 50; i++) { // Tăng lên 50 bài
             String platform = platforms[rand.nextInt(platforms.length)];
             String sentiment = sentiments[rand.nextInt(sentiments.length)];
             String damage = damages[rand.nextInt(damages.length)];
+            String relief = reliefs[rand.nextInt(reliefs.length)];
             
             Post p = new Post(
-                "Report #" + i + ": " + keyword + " situation update", 
-                "Serious damage reported in area " + i, 
+                "Post #" + i + ": Update on " + keyword, 
+                "Content discussing " + relief + " and " + damage, 
                 "User" + i, 
                 "2025-09-" + (10 + i%10), 
                 platform
             );
             
             p.setSentiment(sentiment);
-            p.setDamageType(damage); // Gán loại thiệt hại giả
+            p.setDamageType(damage);
+            p.setReliefType(relief); // Gán loại cứu trợ
+            
             results.add(p);
         }
         

@@ -3,9 +3,7 @@ package vn.hust.group05.controller;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
-import javafx.scene.chart.BarChart;
-import javafx.scene.chart.PieChart;
-import javafx.scene.chart.XYChart;
+import javafx.scene.chart.*;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -21,8 +19,6 @@ import java.util.Map;
 public class MainController {
 
     @FXML private TextField searchField;
-    
-    // Bảng dữ liệu
     @FXML private TableView<Post> dataTable;
     @FXML private TableColumn<Post, String> colPlatform;
     @FXML private TableColumn<Post, String> colDate;
@@ -30,22 +26,23 @@ public class MainController {
     @FXML private TableColumn<Post, String> colSentiment;
     @FXML private TableColumn<Post, String> colTitle;
 
-    // Các biểu đồ
     @FXML private PieChart sentimentChart;
     @FXML private BarChart<String, Number> damageChart;
+    
+    // Biểu đồ mới cho Problem 3
+    @FXML private StackedBarChart<String, Number> reliefChart;
+    @FXML private CategoryAxis xAxisRelief;
 
     private ObservableList<Post> postList = FXCollections.observableArrayList();
     private IDataCollector dataCollector = new DummyCollector();
 
     @FXML
     public void initialize() {
-        // Cấu hình cột bảng
         colPlatform.setCellValueFactory(new PropertyValueFactory<>("platform"));
         colDate.setCellValueFactory(new PropertyValueFactory<>("timestamp"));
         colDamage.setCellValueFactory(new PropertyValueFactory<>("damageType"));
         colSentiment.setCellValueFactory(new PropertyValueFactory<>("sentiment"));
         colTitle.setCellValueFactory(new PropertyValueFactory<>("title"));
-
         dataTable.setItems(postList);
     }
 
@@ -53,48 +50,68 @@ public class MainController {
     protected void onSearchButtonClick() {
         String keyword = searchField.getText();
         postList.clear();
-        
-        // 1. Lấy dữ liệu
         List<Post> results = dataCollector.collect(keyword);
         postList.addAll(results);
-        
-        // 2. Cập nhật biểu đồ
         updateCharts();
-        
-        // Chuyển sang tab Dashboard (tùy chọn, ở đây mình để user tự bấm chuyển)
     }
-    
+    @SuppressWarnings("unchecked")
     private void updateCharts() {
-        // --- Cập nhật PieChart (Cảm xúc) ---
-        int positive = 0, negative = 0, neutral = 0;
+        // 1. PieChart (Tổng quan cảm xúc)
+        int pos = 0, neg = 0, neu = 0;
         for (Post p : postList) {
-            if ("Positive".equals(p.getSentiment())) positive++;
-            else if ("Negative".equals(p.getSentiment())) negative++;
-            else neutral++;
+            switch (p.getSentiment()) {
+                case "Positive" -> pos++;
+                case "Negative" -> neg++;
+                default -> neu++;
+            }
         }
         sentimentChart.setData(FXCollections.observableArrayList(
-            new PieChart.Data("Positive", positive),
-            new PieChart.Data("Negative", negative),
-            new PieChart.Data("Neutral", neutral)
+            new PieChart.Data("Positive", pos),
+            new PieChart.Data("Negative", neg),
+            new PieChart.Data("Neutral", neu)
         ));
 
-        // --- Cập nhật BarChart (Thiệt hại) ---
-        // Dùng Map để đếm số lượng từng loại thiệt hại
-        Map<String, Integer> damageCounts = new HashMap<>();
+        // 2. BarChart (Thiệt hại)
+        Map<String, Integer> dmgCounts = new HashMap<>();
         for (Post p : postList) {
-            String type = p.getDamageType();
-            damageCounts.put(type, damageCounts.getOrDefault(type, 0) + 1);
+            if (!"None".equals(p.getDamageType())) { // Bỏ qua cái None cho đỡ rác
+                dmgCounts.put(p.getDamageType(), dmgCounts.getOrDefault(p.getDamageType(), 0) + 1);
+            }
         }
-
-        // Tạo Series dữ liệu cho BarChart
-        XYChart.Series<String, Number> series = new XYChart.Series<>();
-        series.setName("Number of Posts");
-        
-        for (Map.Entry<String, Integer> entry : damageCounts.entrySet()) {
-            series.getData().add(new XYChart.Data<>(entry.getKey(), entry.getValue()));
+        XYChart.Series<String, Number> dmgSeries = new XYChart.Series<>();
+        dmgSeries.setName("Damage Count");
+        for (var entry : dmgCounts.entrySet()) {
+            dmgSeries.getData().add(new XYChart.Data<>(entry.getKey(), entry.getValue()));
         }
-
         damageChart.getData().clear();
-        damageChart.getData().add(series);
+        damageChart.getData().add(dmgSeries);
+
+        // 3. StackedBarChart (Cứu trợ vs Cảm xúc)
+        // Cần 3 series: Positive, Negative, Neutral
+        XYChart.Series<String, Number> sPositive = new XYChart.Series<>(); sPositive.setName("Positive");
+        XYChart.Series<String, Number> sNegative = new XYChart.Series<>(); sNegative.setName("Negative");
+        XYChart.Series<String, Number> sNeutral = new XYChart.Series<>(); sNeutral.setName("Neutral");
+
+        // Map<ReliefItem, Map<Sentiment, Count>>
+        Map<String, Map<String, Integer>> reliefMap = new HashMap<>();
+
+        for (Post p : postList) {
+            String relief = p.getReliefType();
+            if ("None".equals(relief)) continue; // Bỏ qua nếu không nói về cứu trợ
+
+            reliefMap.putIfAbsent(relief, new HashMap<>());
+            Map<String, Integer> sentMap = reliefMap.get(relief);
+            sentMap.put(p.getSentiment(), sentMap.getOrDefault(p.getSentiment(), 0) + 1);
+        }
+
+        for (String item : reliefMap.keySet()) {
+            Map<String, Integer> sents = reliefMap.get(item);
+            sPositive.getData().add(new XYChart.Data<>(item, sents.getOrDefault("Positive", 0)));
+            sNegative.getData().add(new XYChart.Data<>(item, sents.getOrDefault("Negative", 0)));
+            sNeutral.getData().add(new XYChart.Data<>(item, sents.getOrDefault("Neutral", 0)));
+        }
+
+        reliefChart.getData().clear();
+        reliefChart.getData().addAll(sPositive, sNegative, sNeutral);
     }
 }
