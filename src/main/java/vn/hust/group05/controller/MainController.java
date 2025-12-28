@@ -11,6 +11,7 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import vn.hust.group05.model.Post;
 import vn.hust.group05.service.DummyCollector;
 import vn.hust.group05.service.IDataCollector;
+import vn.hust.group05.service.RealCollector;
 
 import java.util.HashMap;
 import java.util.List;
@@ -34,7 +35,7 @@ public class MainController {
     @FXML private CategoryAxis xAxisRelief;
 
     private ObservableList<Post> postList = FXCollections.observableArrayList();
-    private IDataCollector dataCollector = new DummyCollector();
+    private IDataCollector dataCollector = new RealCollector();
 
     @FXML
     public void initialize() {
