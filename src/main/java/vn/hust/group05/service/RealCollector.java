@@ -1,14 +1,14 @@
 package vn.hust.group05.service;
 
 import com.app.collector.crawler.Crawler;
-import com.app.collector.crawler.VnExpressSeleniumCrawler; // Đảm bảo bạn đã copy file này
-import com.app.collector.fetcher.SeleniumHtmlFetcher;     // Đảm bảo bạn đã copy file này
+import com.app.collector.crawler.VnExpressSeleniumCrawler;
+import com.app.collector.fetcher.SeleniumHtmlFetcher;
 import com.app.collector.fetcher.htmlFetcher;
 import com.app.collector.manager.collectormanager;
 import com.app.collector.model.NewsPostRaw;
 import com.app.collector.parser.NewsPostParser;
 import com.app.collector.scraper.Scraper;
-import com.app.collector.scraper.VnExpressNewsScraper;    // Đảm bảo bạn đã copy file này
+import com.app.collector.scraper.VnExpressNewsScraper;
 
 import vn.hust.group05.model.Post;
 
@@ -22,8 +22,7 @@ public class RealCollector implements IDataCollector {
     public List<Post> collect(String keyword) {
         System.out.println("Dang khoi dong Selenium de cao du lieu that...");
         
-        // 1. Khởi tạo các thành phần của nhóm Data Collector
-        // (Lưu ý: Nếu báo đỏ dòng nào là do bạn chưa copy file class tương ứng của bạn kia vào)
+        // 1. Khởi tạo
         htmlFetcher fetcher = new SeleniumHtmlFetcher();
         Crawler crawler = new VnExpressSeleniumCrawler();
         Scraper scraper = new VnExpressNewsScraper();
@@ -31,37 +30,45 @@ public class RealCollector implements IDataCollector {
 
         collectormanager manager = new collectormanager(crawler, fetcher, scraper, parser);
 
-        // 2. Thiết lập thời gian tìm kiếm (Ví dụ: tìm trong 3 ngày gần nhất)
+        // 2. Thiết lập thời gian tìm kiếm
         LocalDate to = LocalDate.now();
-        LocalDate from = to.minusDays(3);
+        LocalDate from = to.minusDays(30); // Tìm trong 30 ngày gần nhất
 
-        // 3. Gọi hàm collect của bạn kia
+        // 3. Gọi hàm collect
         List<NewsPostRaw> rawPosts = manager.collect(keyword, from, to);
         
-        // 4. Chuyển đổi (Convert) từ NewsPostRaw sang Post của giao diện
+        // 4. Chuyển đổi dữ liệu (Đoạn này đã sửa lỗi NullPointer)
         List<Post> myPosts = new ArrayList<>();
         
         for (NewsPostRaw raw : rawPosts) {
-            // Mapping dữ liệu:
             String title = raw.getTitle();
             String content = raw.getContent();
             if (content != null && content.length() > 100) {
-                content = content.substring(0, 100) + "..."; // Cắt ngắn nội dung cho đẹp bảng
+                content = content.substring(0, 100) + "...";
             }
-            String author = raw.getSource(); // Lấy nguồn làm tác giả
-            String timestamp = raw.getPublishedTime().toString(); // Chuyển ngày tháng sang chuỗi
-            String platform = "VnExpress"; // Vì code bạn kia là VnExpressCrawler
+            
+            String author = raw.getSource();
+            
+            // === SỬA LỖI Ở ĐÂY ===
+            // Kiểm tra xem ngày tháng có bị null không trước khi dùng
+            String timestamp = "Unknown Date";
+            if (raw.getPublishedTime() != null) {
+                timestamp = raw.getPublishedTime().toString();
+            }
+            // ======================
+
+            String platform = "VnExpress";
 
             Post p = new Post(title, content, author, timestamp, platform);
             
-            // Xử lý sơ bộ (sau này có thể nâng cấp AI phân tích sentiment ở đây)
+            // Giả lập phân tích sentiment cho code Scraper
             p.setSentiment("Neutral"); 
-            p.setDamageType("Unknown");
+            p.setDamageType("None");
             
             myPosts.add(p);
         }
         
-        System.out.println("Da lay duoc " + myPosts.size() + " bai viet that!");
+        System.out.println("Da lay duoc " + myPosts.size() + " bai viet that tu VnExpress!");
         return myPosts;
     }
 }

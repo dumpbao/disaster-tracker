@@ -1,6 +1,7 @@
 package vn.hust.group05.model;
 
 public class Post {
+    private String source;
     private String title;
     private String content;
     private String author;
@@ -39,5 +40,13 @@ public class Post {
     @Override
     public String toString() {
         return "[" + platform + "] " + title;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
     }
 }

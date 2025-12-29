@@ -1,13 +1,13 @@
 package com.app.collector.crawler;
 
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebElement;
-
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebElement;
 
 /**
  * Search-based Selenium crawler for VnExpress
@@ -16,7 +16,6 @@ import java.util.Set;
 public class VnExpressSeleniumCrawler extends BaseSeleniumCollector implements Crawler {
 
     private static final int MAX_RESULTS = 50;
-    private static final int MAX_SCROLL = 6;
 
     private static final String SEARCH_URL =
             "https://timkiem.vnexpress.net/?q=%s";

@@ -9,17 +9,17 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import vn.hust.group05.model.Post;
-import vn.hust.group05.service.DummyCollector;
-import vn.hust.group05.service.IDataCollector;
-import vn.hust.group05.service.RealCollector;
+import vn.hust.group05.service.*;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class MainController {
 
+    // === KHAI BÁO FXML ===
     @FXML private TextField searchField;
+    
+    // Bảng dữ liệu
     @FXML private TableView<Post> dataTable;
     @FXML private TableColumn<Post, String> colPlatform;
     @FXML private TableColumn<Post, String> colDate;
@@ -27,92 +27,98 @@ public class MainController {
     @FXML private TableColumn<Post, String> colSentiment;
     @FXML private TableColumn<Post, String> colTitle;
 
+    // Biểu đồ
     @FXML private PieChart sentimentChart;
     @FXML private BarChart<String, Number> damageChart;
-    
-    // Biểu đồ mới cho Problem 3
-    @FXML private StackedBarChart<String, Number> reliefChart;
-    @FXML private CategoryAxis xAxisRelief;
+    @FXML private StackedBarChart<String, Number> reliefChart; // Biểu đồ mới
 
+    // === DỮ LIỆU & SERVICE ===
+    // Dùng 1 list duy nhất để đồng bộ dữ liệu giữa Controller và Giao diện
     private ObservableList<Post> postList = FXCollections.observableArrayList();
-    private IDataCollector dataCollector = new RealCollector();
+    
+    private IDataCollector dataCollector = new HybridCollector(); // Dùng Guardian để lấy tin cũ
+    private DataAnalyzer analyzer = new DataAnalyzer();
 
     @FXML
     public void initialize() {
-        colPlatform.setCellValueFactory(new PropertyValueFactory<>("platform"));
+        // Cấu hình các cột cho bảng
+        // Lưu ý: Chuỗi trong PropertyValueFactory phải trùng tên biến trong class Post
+        colPlatform.setCellValueFactory(new PropertyValueFactory<>("source")); // Post.java dùng 'source', không phải 'platform'
         colDate.setCellValueFactory(new PropertyValueFactory<>("timestamp"));
         colDamage.setCellValueFactory(new PropertyValueFactory<>("damageType"));
         colSentiment.setCellValueFactory(new PropertyValueFactory<>("sentiment"));
         colTitle.setCellValueFactory(new PropertyValueFactory<>("title"));
+
+        // Gán list dữ liệu vào bảng
         dataTable.setItems(postList);
     }
 
     @FXML
     protected void onSearchButtonClick() {
         String keyword = searchField.getText();
+        if (keyword == null || keyword.isEmpty()) {
+            return;
+        }
+
+        // 1. Lấy dữ liệu từ API
+        List<Post> rawPosts = dataCollector.collect(keyword);
+        
+        // 2. Cập nhật vào bảng (Xóa cũ, thêm mới)
         postList.clear();
-        List<Post> results = dataCollector.collect(keyword);
-        postList.addAll(results);
-        updateCharts();
+        postList.addAll(rawPosts);
+
+        // 3. Cập nhật tất cả biểu đồ
+        updateAllCharts(rawPosts);
     }
+
+    // Hàm riêng để vẽ biểu đồ cho gọn code
     @SuppressWarnings("unchecked")
-    private void updateCharts() {
-        // 1. PieChart (Tổng quan cảm xúc)
-        int pos = 0, neg = 0, neu = 0;
-        for (Post p : postList) {
-            switch (p.getSentiment()) {
-                case "Positive" -> pos++;
-                case "Negative" -> neg++;
-                default -> neu++;
+    private void updateAllCharts(List<Post> posts) {
+        
+        // --- A. Vẽ PieChart (Cảm xúc) ---
+        Map<String, Integer> sentimentStats = analyzer.analyzeSentiment(posts);
+        ObservableList<PieChart.Data> pieData = FXCollections.observableArrayList();
+        for (Map.Entry<String, Integer> entry : sentimentStats.entrySet()) {
+            if (entry.getValue() > 0) {
+                pieData.add(new PieChart.Data(entry.getKey(), entry.getValue()));
             }
         }
-        sentimentChart.setData(FXCollections.observableArrayList(
-            new PieChart.Data("Positive", pos),
-            new PieChart.Data("Negative", neg),
-            new PieChart.Data("Neutral", neu)
-        ));
+        sentimentChart.setData(pieData);
+        sentimentChart.setTitle("Sentiment Overview");
 
-        // 2. BarChart (Thiệt hại)
-        Map<String, Integer> dmgCounts = new HashMap<>();
-        for (Post p : postList) {
-            if (!"None".equals(p.getDamageType())) { // Bỏ qua cái None cho đỡ rác
-                dmgCounts.put(p.getDamageType(), dmgCounts.getOrDefault(p.getDamageType(), 0) + 1);
-            }
+        // --- B. Vẽ BarChart (Thiệt hại) ---
+        Map<String, Integer> damageStats = analyzer.analyzeDamageType(posts);
+        XYChart.Series<String, Number> damageSeries = new XYChart.Series<>();
+        damageSeries.setName("Cases");
+        
+        for (Map.Entry<String, Integer> entry : damageStats.entrySet()) {
+            damageSeries.getData().add(new XYChart.Data<>(entry.getKey(), entry.getValue()));
         }
-        XYChart.Series<String, Number> dmgSeries = new XYChart.Series<>();
-        dmgSeries.setName("Damage Count");
-        for (var entry : dmgCounts.entrySet()) {
-            dmgSeries.getData().add(new XYChart.Data<>(entry.getKey(), entry.getValue()));
-        }
+        
         damageChart.getData().clear();
-        damageChart.getData().add(dmgSeries);
+        damageChart.getData().add(damageSeries);
+        damageChart.setTitle("Damage Statistics");
 
-        // 3. StackedBarChart (Cứu trợ vs Cảm xúc)
-        // Cần 3 series: Positive, Negative, Neutral
+        // --- C. Vẽ StackedBarChart (Cứu trợ & Cảm xúc) ---
+        // Cấu trúc Stacked cần 3 series riêng biệt cho Positive, Negative, Neutral
         XYChart.Series<String, Number> sPositive = new XYChart.Series<>(); sPositive.setName("Positive");
         XYChart.Series<String, Number> sNegative = new XYChart.Series<>(); sNegative.setName("Negative");
-        XYChart.Series<String, Number> sNeutral = new XYChart.Series<>(); sNeutral.setName("Neutral");
+        XYChart.Series<String, Number> sNeutral  = new XYChart.Series<>(); sNeutral.setName("Neutral");
 
-        // Map<ReliefItem, Map<Sentiment, Count>>
-        Map<String, Map<String, Integer>> reliefMap = new HashMap<>();
+        // Lấy dữ liệu phân tích phức hợp từ Analyzer
+        Map<String, Map<String, Integer>> reliefData = analyzer.analyzeReliefAndSentiment(posts);
 
-        for (Post p : postList) {
-            String relief = p.getReliefType();
-            if ("None".equals(relief)) continue; // Bỏ qua nếu không nói về cứu trợ
-
-            reliefMap.putIfAbsent(relief, new HashMap<>());
-            Map<String, Integer> sentMap = reliefMap.get(relief);
-            sentMap.put(p.getSentiment(), sentMap.getOrDefault(p.getSentiment(), 0) + 1);
-        }
-
-        for (String item : reliefMap.keySet()) {
-            Map<String, Integer> sents = reliefMap.get(item);
-            sPositive.getData().add(new XYChart.Data<>(item, sents.getOrDefault("Positive", 0)));
-            sNegative.getData().add(new XYChart.Data<>(item, sents.getOrDefault("Negative", 0)));
-            sNeutral.getData().add(new XYChart.Data<>(item, sents.getOrDefault("Neutral", 0)));
+        for (String reliefType : reliefData.keySet()) {
+            Map<String, Integer> sents = reliefData.get(reliefType);
+            
+            // Thêm dữ liệu vào từng cột chồng
+            sPositive.getData().add(new XYChart.Data<>(reliefType, sents.getOrDefault("Positive", 0)));
+            sNegative.getData().add(new XYChart.Data<>(reliefType, sents.getOrDefault("Negative", 0)));
+            sNeutral.getData().add(new XYChart.Data<>(reliefType, sents.getOrDefault("Neutral", 0)));
         }
 
         reliefChart.getData().clear();
         reliefChart.getData().addAll(sPositive, sNegative, sNeutral);
+        reliefChart.setTitle("Relief Efforts & Sentiment");
     }
 }

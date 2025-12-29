@@ -1,7 +1,5 @@
 package com.app.collector.test;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -14,7 +12,6 @@ import com.app.collector.model.NewsPostRaw;
 import com.app.collector.parser.NewsPostParser;
 import com.app.collector.scraper.Scraper;
 import com.app.collector.scraper.VnExpressNewsScraper;
-import com.app.persistence.csv.CsvWriter;
 
 public class CollectorTestMain {
 
@@ -48,9 +45,5 @@ public class CollectorTestMain {
             System.out.println("URL  : " + post.getUrl());
             System.out.println("----------------------------------");
         }
-
-        String outputPath = "C:/Users/ADMIN/eclipse-workspace/DisasterWatch/src/main/java/com/app/data/vnexpress_yagi.csv";
-
-        CsvWriter.writeNewsPosts(posts, outputPath);
     }
 }
