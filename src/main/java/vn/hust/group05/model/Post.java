@@ -1,52 +1,42 @@
 package vn.hust.group05.model;
 
 public class Post {
-    private String source;
     private String title;
     private String content;
-    private String author;
+    private String source;
     private String timestamp;
-    private String platform;
-    
-    // Các trường phân tích
-    private String sentiment;   // Positive, Negative
-    private String damageType;  // Flood, Landslide...
-    private String reliefType;  // Food, Medicine, Shelter... (Mới thêm)
+    private String url;
+    private String location; 
+    // Các biến phân tích
+    private String sentiment;
+    private String damageType;
+    private String reliefType;
 
-    public Post(String title, String content, String author, String timestamp, String platform) {
+    // Cập nhật Constructor thêm URL
+    public Post(String title, String content, String source, String timestamp, String url) {
         this.title = title;
         this.content = content;
-        this.author = author;
+        this.source = source;
         this.timestamp = timestamp;
-        this.platform = platform;
-        this.sentiment = "Neutral";
-        this.damageType = "None";
-        this.reliefType = "None"; // Mặc định
+        this.url = url;
     }
 
+    // Getter & Setter
     public String getTitle() { return title; }
     public String getContent() { return content; }
-    public String getAuthor() { return author; }
+    public String getSource() { return source; }
     public String getTimestamp() { return timestamp; }
-    public String getPlatform() { return platform; }
+    public String getUrl() { return url; } // Getter cho URL
+
     public String getSentiment() { return sentiment; }
-    public String getDamageType() { return damageType; }
-    public String getReliefType() { return reliefType; } // Getter mới
-
     public void setSentiment(String sentiment) { this.sentiment = sentiment; }
+
+    public String getDamageType() { return damageType; }
     public void setDamageType(String damageType) { this.damageType = damageType; }
-    public void setReliefType(String reliefType) { this.reliefType = reliefType; } // Setter mới
-    
-    @Override
-    public String toString() {
-        return "[" + platform + "] " + title;
-    }
 
-    public String getSource() {
-        return source;
-    }
+    public String getReliefType() { return reliefType; }
+    public void setReliefType(String reliefType) { this.reliefType = reliefType; }
 
-    public void setSource(String source) {
-        this.source = source;
-    }
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
 }

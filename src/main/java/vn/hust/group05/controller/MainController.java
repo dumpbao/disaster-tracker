@@ -1,124 +1,185 @@
 package vn.hust.group05.controller;
 
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.chart.*;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextField;
+import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.util.StringConverter; // Nhớ import cái này
 import vn.hust.group05.model.Post;
 import vn.hust.group05.service.*;
 
+import java.awt.Desktop;
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
 public class MainController {
 
-    // === KHAI BÁO FXML ===
+    // === UI COMPONENTS ===
     @FXML private TextField searchField;
-    
-    // Bảng dữ liệu
+    @FXML private Button searchButton;
+    @FXML private ProgressIndicator loadingSpinner;
+
+    // Table
     @FXML private TableView<Post> dataTable;
-    @FXML private TableColumn<Post, String> colPlatform;
     @FXML private TableColumn<Post, String> colDate;
     @FXML private TableColumn<Post, String> colDamage;
     @FXML private TableColumn<Post, String> colSentiment;
     @FXML private TableColumn<Post, String> colTitle;
 
-    // Biểu đồ
+    // Charts
     @FXML private PieChart sentimentChart;
     @FXML private BarChart<String, Number> damageChart;
-    @FXML private StackedBarChart<String, Number> reliefChart; // Biểu đồ mới
+    @FXML private StackedBarChart<String, Number> reliefChart;
+    @FXML private LineChart<String, Number> trendChart;
+    @FXML private BarChart<String, Number> locationChart;
 
-    // === DỮ LIỆU & SERVICE ===
-    // Dùng 1 list duy nhất để đồng bộ dữ liệu giữa Controller và Giao diện
+    // === DATA & SERVICES ===
     private ObservableList<Post> postList = FXCollections.observableArrayList();
-    
-    private IDataCollector dataCollector = new HybridCollector(); // Dùng Guardian để lấy tin cũ
+    private IDataCollector dataCollector = new RealCollector(); 
     private DataAnalyzer analyzer = new DataAnalyzer();
 
     @FXML
     public void initialize() {
-        // Cấu hình các cột cho bảng
-        // Lưu ý: Chuỗi trong PropertyValueFactory phải trùng tên biến trong class Post
-        colPlatform.setCellValueFactory(new PropertyValueFactory<>("source")); // Post.java dùng 'source', không phải 'platform'
+        // Cấu hình bảng
         colDate.setCellValueFactory(new PropertyValueFactory<>("timestamp"));
         colDamage.setCellValueFactory(new PropertyValueFactory<>("damageType"));
         colSentiment.setCellValueFactory(new PropertyValueFactory<>("sentiment"));
         colTitle.setCellValueFactory(new PropertyValueFactory<>("title"));
-
-        // Gán list dữ liệu vào bảng
         dataTable.setItems(postList);
+
+        // Double Click mở link
+        dataTable.setRowFactory(tv -> {
+            TableRow<Post> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && (!row.isEmpty())) {
+                    Post rowData = row.getItem();
+                    openWebpage(rowData.getUrl());
+                }
+            });
+            return row;
+        });
+
+        // --- FIX LỖI SỐ LẺ TRÊN BIỂU ĐỒ (0.5, 1.5...) ---
+        makeAxisInteger(damageChart);
+        makeAxisInteger(reliefChart);
+        makeAxisInteger(trendChart);
+        makeAxisInteger(locationChart);
     }
 
     @FXML
     protected void onSearchButtonClick() {
         String keyword = searchField.getText();
-        if (keyword == null || keyword.isEmpty()) {
-            return;
-        }
+        if (keyword == null || keyword.isEmpty()) return;
 
-        // 1. Lấy dữ liệu từ API
-        List<Post> rawPosts = dataCollector.collect(keyword);
-        
-        // 2. Cập nhật vào bảng (Xóa cũ, thêm mới)
-        postList.clear();
-        postList.addAll(rawPosts);
+        loadingSpinner.setVisible(true);
+        searchButton.setDisable(true);
+        System.out.println("Dang tim kiem: " + keyword);
 
-        // 3. Cập nhật tất cả biểu đồ
-        updateAllCharts(rawPosts);
+        new Thread(() -> {
+            try {
+                // Scrape
+                List<Post> rawPosts = dataCollector.collect(keyword);
+                
+                // Analyze (Logic mới: Gộp 5 bài/lần)
+                analyzer.analyzeAll(rawPosts);
+
+                Platform.runLater(() -> {
+                    postList.clear();
+                    postList.addAll(rawPosts);
+                    updateAllCharts(rawPosts);
+                    
+                    loadingSpinner.setVisible(false);
+                    searchButton.setDisable(false);
+                    System.out.println("Hoan thanh!");
+                });
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> {
+                    loadingSpinner.setVisible(false);
+                    searchButton.setDisable(false);
+                });
+            }
+        }).start();
     }
 
-    // Hàm riêng để vẽ biểu đồ cho gọn code
     @SuppressWarnings("unchecked")
     private void updateAllCharts(List<Post> posts) {
-        
-        // --- A. Vẽ PieChart (Cảm xúc) ---
-        Map<String, Integer> sentimentStats = analyzer.analyzeSentiment(posts);
+        // A. Sentiment
+        Map<String, Integer> sentStats = analyzer.getSentimentStats(posts);
         ObservableList<PieChart.Data> pieData = FXCollections.observableArrayList();
-        for (Map.Entry<String, Integer> entry : sentimentStats.entrySet()) {
-            if (entry.getValue() > 0) {
-                pieData.add(new PieChart.Data(entry.getKey(), entry.getValue()));
-            }
-        }
+        sentStats.forEach((k, v) -> { if (v > 0) pieData.add(new PieChart.Data(k, v)); });
         sentimentChart.setData(pieData);
-        sentimentChart.setTitle("Sentiment Overview");
 
-        // --- B. Vẽ BarChart (Thiệt hại) ---
-        Map<String, Integer> damageStats = analyzer.analyzeDamageType(posts);
-        XYChart.Series<String, Number> damageSeries = new XYChart.Series<>();
-        damageSeries.setName("Cases");
-        
-        for (Map.Entry<String, Integer> entry : damageStats.entrySet()) {
-            damageSeries.getData().add(new XYChart.Data<>(entry.getKey(), entry.getValue()));
-        }
-        
+        // B. Damage
+        Map<String, Integer> dmgStats = analyzer.getDamageStats(posts);
+        XYChart.Series<String, Number> dmgSeries = new XYChart.Series<>();
+        dmgSeries.setName("Cases");
+        dmgStats.forEach((k, v) -> dmgSeries.getData().add(new XYChart.Data<>(k, v)));
         damageChart.getData().clear();
-        damageChart.getData().add(damageSeries);
-        damageChart.setTitle("Damage Statistics");
+        damageChart.getData().add(dmgSeries);
 
-        // --- C. Vẽ StackedBarChart (Cứu trợ & Cảm xúc) ---
-        // Cấu trúc Stacked cần 3 series riêng biệt cho Positive, Negative, Neutral
-        XYChart.Series<String, Number> sPositive = new XYChart.Series<>(); sPositive.setName("Positive");
-        XYChart.Series<String, Number> sNegative = new XYChart.Series<>(); sNegative.setName("Negative");
-        XYChart.Series<String, Number> sNeutral  = new XYChart.Series<>(); sNeutral.setName("Neutral");
-
-        // Lấy dữ liệu phân tích phức hợp từ Analyzer
-        Map<String, Map<String, Integer>> reliefData = analyzer.analyzeReliefAndSentiment(posts);
-
-        for (String reliefType : reliefData.keySet()) {
-            Map<String, Integer> sents = reliefData.get(reliefType);
-            
-            // Thêm dữ liệu vào từng cột chồng
-            sPositive.getData().add(new XYChart.Data<>(reliefType, sents.getOrDefault("Positive", 0)));
-            sNegative.getData().add(new XYChart.Data<>(reliefType, sents.getOrDefault("Negative", 0)));
-            sNeutral.getData().add(new XYChart.Data<>(reliefType, sents.getOrDefault("Neutral", 0)));
-        }
-
+        // C. Relief
         reliefChart.getData().clear();
-        reliefChart.getData().addAll(sPositive, sNegative, sNeutral);
-        reliefChart.setTitle("Relief Efforts & Sentiment");
+        XYChart.Series<String, Number> sPos = new XYChart.Series<>(); sPos.setName("Positive");
+        XYChart.Series<String, Number> sNeg = new XYChart.Series<>(); sNeg.setName("Negative");
+        XYChart.Series<String, Number> sNeu = new XYChart.Series<>(); sNeu.setName("Neutral");
+        
+        Map<String, Map<String, Integer>> reliefData = analyzer.getReliefStats(posts);
+        reliefData.forEach((relief, sents) -> {
+            sPos.getData().add(new XYChart.Data<>(relief, sents.getOrDefault("Positive", 0)));
+            sNeg.getData().add(new XYChart.Data<>(relief, sents.getOrDefault("Negative", 0)));
+            sNeu.getData().add(new XYChart.Data<>(relief, sents.getOrDefault("Neutral", 0)));
+        });
+        reliefChart.getData().addAll(sPos, sNeg, sNeu);
+
+        // D. Trend
+        trendChart.getData().clear();
+        XYChart.Series<String, Number> trendSeries = new XYChart.Series<>();
+        trendSeries.setName("Posts per Day");
+        analyzer.getTrendStats(posts).forEach((k, v) -> trendSeries.getData().add(new XYChart.Data<>(k, v)));
+        trendChart.getData().add(trendSeries);
+
+        // E. Location
+        locationChart.getData().clear();
+        XYChart.Series<String, Number> locSeries = new XYChart.Series<>();
+        locSeries.setName("Mentions");
+        analyzer.getLocationStats(posts).forEach((k, v) -> {
+            if (v > 0) locSeries.getData().add(new XYChart.Data<>(k, v));
+        });
+        locationChart.getData().add(locSeries);
+    }
+
+    private void openWebpage(String urlString) {
+        try {
+            if (urlString != null && !urlString.isEmpty()) {
+                Desktop.getDesktop().browse(new URI(urlString));
+            }
+        } catch (Exception e) {
+            System.out.println("Khong mo duoc link: " + e.getMessage());
+        }
+    }
+
+    // --- HÀM SỬA TRỤC SỐ (CHỈ HIỆN SỐ NGUYÊN) ---
+    private void makeAxisInteger(XYChart<?, Number> chart) {
+        if (chart == null) return;
+        NumberAxis axis = (NumberAxis) chart.getYAxis();
+        axis.setMinorTickVisible(false); // Tắt vạch nhỏ
+        axis.setTickLabelFormatter(new StringConverter<Number>() {
+            @Override
+            public String toString(Number object) {
+                // Nếu là số nguyên thì hiện, số lẻ thì ẩn
+                if (object.doubleValue() % 1 == 0) {
+                    return String.format("%.0f", object.doubleValue());
+                }
+                return "";
+            }
+            @Override
+            public Number fromString(String string) { return null; }
+        });
     }
 }

@@ -9,10 +9,10 @@ import com.app.collector.model.NewsPostRaw;
 import com.app.collector.parser.NewsPostParser;
 import com.app.collector.scraper.Scraper;
 import com.app.collector.scraper.VnExpressNewsScraper;
-
 import vn.hust.group05.model.Post;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,9 +20,8 @@ public class RealCollector implements IDataCollector {
 
     @Override
     public List<Post> collect(String keyword) {
-        System.out.println("Dang khoi dong Selenium de cao du lieu that...");
+        System.out.println("Dang khoi dong Selenium (VnExpress)...");
         
-        // 1. Khởi tạo
         htmlFetcher fetcher = new SeleniumHtmlFetcher();
         Crawler crawler = new VnExpressSeleniumCrawler();
         Scraper scraper = new VnExpressNewsScraper();
@@ -30,14 +29,20 @@ public class RealCollector implements IDataCollector {
 
         collectormanager manager = new collectormanager(crawler, fetcher, scraper, parser);
 
-        // 2. Thiết lập thời gian tìm kiếm
         LocalDate to = LocalDate.now();
-        LocalDate from = to.minusDays(30); // Tìm trong 30 ngày gần nhất
+        LocalDate from = to.minusDays(30); // Tìm trong 30 ngày
 
-        // 3. Gọi hàm collect
-        List<NewsPostRaw> rawPosts = manager.collect(keyword, from, to);
+        List<NewsPostRaw> rawPosts = new ArrayList<>();
+        try {
+            rawPosts = manager.collect(keyword, from, to);
+        } catch (Exception e) {
+            System.out.println("Loi khi scrape: " + e.getMessage());
+        } finally {
+            if (fetcher instanceof SeleniumHtmlFetcher) {
+                ((SeleniumHtmlFetcher) fetcher).close();
+            }
+        }
         
-        // 4. Chuyển đổi dữ liệu (Đoạn này đã sửa lỗi NullPointer)
         List<Post> myPosts = new ArrayList<>();
         
         for (NewsPostRaw raw : rawPosts) {
@@ -46,29 +51,22 @@ public class RealCollector implements IDataCollector {
             if (content != null && content.length() > 100) {
                 content = content.substring(0, 100) + "...";
             }
-            
-            String author = raw.getSource();
-            
-            // === SỬA LỖI Ở ĐÂY ===
-            // Kiểm tra xem ngày tháng có bị null không trước khi dùng
-            String timestamp = "Unknown Date";
+            String source = "VnExpress"; 
+            String url = raw.getUrl(); // Lấy URL từ crawler
+
+            String timestamp;
             if (raw.getPublishedTime() != null) {
-                timestamp = raw.getPublishedTime().toString();
+                timestamp = raw.getPublishedTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            } else {
+                timestamp = LocalDate.now().toString();
             }
-            // ======================
 
-            String platform = "VnExpress";
-
-            Post p = new Post(title, content, author, timestamp, platform);
-            
-            // Giả lập phân tích sentiment cho code Scraper
-            p.setSentiment("Neutral"); 
-            p.setDamageType("None");
-            
+            // Truyền URL vào constructor mới
+            Post p = new Post(title, content, source, timestamp, url);
             myPosts.add(p);
         }
         
-        System.out.println("Da lay duoc " + myPosts.size() + " bai viet that tu VnExpress!");
+        System.out.println("Da lay duoc " + myPosts.size() + " bai tu VnExpress.");
         return myPosts;
     }
 }
