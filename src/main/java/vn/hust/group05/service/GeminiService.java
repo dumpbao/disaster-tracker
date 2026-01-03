@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 
 public class GeminiService {
 
-    private static final String API_KEY = "AIzaSyDUuH4iUkosm1ax_nlxShJDyKH-Y0iby3w"; // Nhớ điền API Key
+    private static final String API_KEY = "AIzaSyCQHC80snTASRWTKKVpFxiWcy9fL2A--7A"; // Nhớ điền API Key
     private static final String MODEL_NAME = "models/gemini-2.5-flash"; // Dùng bản 2.0 Flash xử lý batch tốt hơn Lite
     
     private static final String API_URL = "https://generativelanguage.googleapis.com/v1beta/" 

@@ -14,7 +14,7 @@ import java.util.Set;
 
 public class VnExpressCrawler extends BaseSeleniumCollector implements Crawler {
 
-    private static final int MAX_RESULTS = 50;
+    private static final int MAX_RESULTS = 80;
     // URL tìm kiếm chuẩn của VnExpress (đã kiểm tra ký tự sạch)
     private static final String SEARCH_URL = "https://timkiem.vnexpress.net/?q=%s&page=%d";
 
