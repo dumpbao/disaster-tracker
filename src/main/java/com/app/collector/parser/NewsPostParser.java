@@ -1,21 +1,16 @@
 package com.app.collector.parser;
 
+import com.app.collector.model.NewsPostRaw;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import com.app.collector.model.NewsPostRaw;
 
 public class NewsPostParser {
 
-    public NewsPostRaw parse(
-            Map<String, String> raw,
-            String url,
-            String keyword
-    ) {
+    public NewsPostRaw parse(Map<String, String> raw, String url, String keyword) {
         if (!isRelevant(raw, keyword)) {
             return null;
         }
@@ -25,7 +20,8 @@ public class NewsPostParser {
         post.setKeyword(keyword);
         post.setTitle(raw.get("title"));
         post.setContent(raw.get("content"));
-        // Gọi hàm xử lý thời gian đã nâng cấp
+        
+        // Gọi hàm xử lý thời gian mới
         post.setPublishedTime(parseTime(raw.get("time")));
 
         return post;
@@ -34,62 +30,54 @@ public class NewsPostParser {
     private boolean isRelevant(Map<String, String> raw, String keyword) {
         String title = raw.getOrDefault("title", "").toLowerCase();
         String content = raw.getOrDefault("content", "").toLowerCase();
+        if (keyword == null) return true;
 
-        // Tách từ khóa để tìm kĩ hơn
-        if (keyword != null) {
-            for (String token : keyword.toLowerCase().split("\\s+")) {
-                if (title.contains(token) || content.contains(token)) {
-                    return true;
-                }
+        for (String token : keyword.toLowerCase().split("\\s+")) {
+            if (title.contains(token) || content.contains(token)) {
+                return true;
             }
         }
         return false;
     }
 
+    // --- ĐÂY LÀ HÀM QUAN TRỌNG NHẤT ÔNG CẦN ---
     private LocalDateTime parseTime(String timeRaw) {
         if (timeRaw == null || timeRaw.isBlank()) {
             return null;
         }
+        
+        timeRaw = timeRaw.trim();
 
-        // --- XỬ LÝ RIÊNG CHO VNEXPRESS ---
-        // Input: "Chủ nhật, 13/4/2025, 11:43 (GMT+7)"
-        // Logic: Dùng Regex tìm đoạn ngày/tháng/năm và giờ:phút
-        try {
-            // Regex tìm: (số/số/số) dấu_phẩy (số:số)
-            Pattern pattern = Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4}),\\s*(\\d{1,2}:\\d{1,2})");
-            Matcher matcher = pattern.matcher(timeRaw);
-
-            if (matcher.find()) {
-                // Lấy ra phần ngày (group 1) và giờ (group 2) nối lại -> "13/4/2025 11:43"
-                String cleanTime = matcher.group(1) + " " + matcher.group(2);
-                
-                // Dùng format d/M/yyyy (d và M viết thường 1 chữ để chấp nhận cả 1/4 lẫn 13/4)
-                DateTimeFormatter vneFormatter = DateTimeFormatter.ofPattern("d/M/yyyy HH:mm");
-                return LocalDateTime.parse(cleanTime, vneFormatter);
-            }
-        } catch (Exception e) {
-            // Nếu lỗi thì bỏ qua, chạy xuống các format dự phòng bên dưới
-            System.out.println("Loi parse date VnExpress: " + e.getMessage());
-        }
-        // ---------------------------------
-
-        // Các định dạng dự phòng khác (cho các trang web khác nếu có)
-        DateTimeFormatter[] formats = new DateTimeFormatter[] {
+        // 1. Thử các định dạng có Giờ (để tương thích nếu lỡ có)
+        DateTimeFormatter[] dateTimeFormats = {
             DateTimeFormatter.ISO_DATE_TIME,
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"),
-            DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm"),
-            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
         };
 
-        for (DateTimeFormatter f : formats) {
+        for (DateTimeFormatter f : dateTimeFormats) {
             try {
                 return LocalDateTime.parse(timeRaw, f);
-            } catch (DateTimeParseException ignored) {
-                // Thử format tiếp theo
-            }
+            } catch (DateTimeParseException ignored) { }
         }
 
-        return null;
+        // 2. CHẤP NHẬN "CHỈ CÓ NGÀY" (Date Only)
+        // Đây là chỗ giúp code không bị chết khi Scraper gửi về "10/10/2025"
+        DateTimeFormatter[] dateFormats = {
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"), // Ưu tiên định dạng Việt Nam
+            DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+            DateTimeFormatter.ofPattern("d/M/yyyy")    // Chấp nhận cả 9/9/2024
+        };
+
+        for (DateTimeFormatter f : dateFormats) {
+            try {
+                // Parse thành Ngày
+                LocalDate date = LocalDate.parse(timeRaw, f);
+                // Chuyển thành LocalDateTime (tự thêm 00:00 cho đủ thủ tục) để code ông không lỗi
+                return date.atStartOfDay(); 
+            } catch (DateTimeParseException ignored) { }
+        }
+
+        return null; // Không cứu được
     }
 }

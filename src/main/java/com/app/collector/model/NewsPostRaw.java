@@ -46,6 +46,5 @@ public class NewsPostRaw {
 	public void setPublishedTime(LocalDateTime publishedTime) {
 		this.publishedTime = publishedTime;
 	}
-
     
 }

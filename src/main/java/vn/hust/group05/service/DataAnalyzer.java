@@ -6,99 +6,147 @@ import java.util.*;
 public class DataAnalyzer {
 
     private GeminiService geminiService = new GeminiService();
-    
-    // Gộp 5 bài vào 1 request
-    private static final int BATCH_SIZE = 5; 
+    private static final int BATCH_SIZE = 50; 
 
     public void analyzeAll(List<Post> posts) {
         int total = posts.size();
+        System.out.println("=== BAT DAU PHAN TICH " + total + " BAI VIET (SINGLE DAMAGE MODE) ===");
         
-        // Duyệt từng nhóm 5 bài
         for (int i = 0; i < total; i += BATCH_SIZE) {
             int end = Math.min(i + BATCH_SIZE, total);
             List<Post> batch = posts.subList(i, end);
             
-            System.out.println("Dang xu ly lo: " + (i+1) + " den " + end + "...");
-
-            // 1. Xây dựng Prompt gộp (Batch Prompt)
+            System.out.println(">> Batch " + ((i/BATCH_SIZE)+1) + ": Gui tu bai " + (i+1) + " den " + end + "...");
+            
+            // 1. Prompt
             StringBuilder promptBuilder = new StringBuilder();
-            promptBuilder.append("Analyze these ").append(batch.size()).append(" news items about storm/flood in Vietnam.\n");
-            // YÊU CẦU QUAN TRỌNG: Dùng dấu ;;; để ngăn cách các bài
-            promptBuilder.append("Return the result as a single string. Separate each article's analysis with ';;;'.\n");
-            promptBuilder.append("Format for each article: Sentiment|DamageType|ReliefType|Location\n");
-            promptBuilder.append("Rules:\n");
-            promptBuilder.append("- Sentiment: Positive, Negative, Neutral\n");
-            promptBuilder.append("- DamageType: People, Infrastructure, Agriculture, None\n");
-            promptBuilder.append("- ReliefType: Money, Goods, Forces, None\n");
-            promptBuilder.append("- Location: Province/City name or Unknown\n");
-            promptBuilder.append("DO NOT put numbers like [1] or [2]. Just the data.\n");
-            promptBuilder.append("News list:\n");
+            promptBuilder.append("Analyze these ").append(batch.size()).append(" news items.\n");
+            promptBuilder.append("Format per line: ID|Sentiment|DamageType|ReliefType|Location\n");
+            promptBuilder.append("The 'ID' must match the number provided in [Input Data].\n\n");
+            
+            promptBuilder.append("STRICT RULES:\n");
+            promptBuilder.append("1. Sentiment: {Positive, Negative, Neutral}\n");
+            
+            // --- QUAN TRỌNG: Quy tắc chọn 1 Damage duy nhất ---
+            promptBuilder.append("2. DamageType: Choose ONLY ONE from {People, Infrastructure, Agriculture, None}.\n");
+            promptBuilder.append("   - Priority if multiple damages mentioned: People > Infrastructure > Agriculture.\n"); 
+            promptBuilder.append("   - Example: If text says '3 people died and bridge collapsed', choose 'People'.\n");
+            
+            promptBuilder.append("3. ReliefType: {Money, Goods, Forces, None}\n");
+            promptBuilder.append("4. Location: Specific Province or Unknown\n");
+            promptBuilder.append("5. Analyze Damage and Relief INDEPENDENTLY.\n\n");
+            
+            promptBuilder.append("INPUT DATA:\n");
 
             for (int j = 0; j < batch.size(); j++) {
                 Post p = batch.get(j);
-                String contentShort = p.getContent().length() > 200 ? p.getContent().substring(0, 200) : p.getContent();
-                promptBuilder.append("Article ").append(j + 1).append(": Title: ").append(p.getTitle())
+                String contentShort = p.getContent() != null && p.getContent().length() > 800 
+                                      ? p.getContent().substring(0, 800) 
+                                      : p.getContent();
+                contentShort = contentShort.replace("\n", " ").trim();
+                
+                promptBuilder.append("[").append(j).append("] Title: ").append(p.getTitle())
                              .append(" | Content: ").append(contentShort).append("\n");
             }
 
             // 2. Gọi Gemini
             String resultBlock = geminiService.askGemini(promptBuilder.toString());
             
-            // 3. Tách kết quả bằng dấu ;;; (Chuẩn hơn dùng xuống dòng)
-            // Kể cả Gemini viết liền: Negative|...|Hanoi;;;Positive|...
-            String[] rawResults = resultBlock.split(";;;");
-
-            // 4. Map kết quả ngược lại vào Post
-            for (int j = 0; j < batch.size(); j++) {
-                // Nếu số lượng kết quả trả về ít hơn số bài gửi đi -> Lấy default
-                if (j >= rawResults.length) {
-                    setDefault(batch.get(j));
-                    continue;
-                }
-
-                String line = rawResults[j].trim();
-                // Xử lý trường hợp dòng rỗng do split thừa
-                if (line.isEmpty() && j + 1 < rawResults.length) {
-                    line = rawResults[j+1].trim(); // Thử lấy dòng tiếp
-                }
-
+            // 3. Xử lý kết quả (ID Mapping)
+            Map<Integer, String[]> resultMap = new HashMap<>();
+            String[] rawLines = resultBlock.split("\n");
+            
+            for (String line : rawLines) {
+                line = line.trim();
+                if (line.length() < 5 || !line.contains("|")) continue;
                 try {
-                    // Format: Sentiment|Damage|Relief|Location
                     String[] parts = line.split("\\|");
-                    if (parts.length >= 4) {
-                        Post p = batch.get(j);
-                        p.setSentiment(parts[0].trim());
-                        p.setDamageType(parts[1].trim());
-                        p.setReliefType(parts[2].trim());
-                        p.setLocation(parts[3].trim());
-                    } else {
-                        // Nếu format sai
-                        setDefault(batch.get(j));
+                    if (parts.length >= 5) {
+                        int id = Integer.parseInt(parts[0].trim());
+                        resultMap.put(id, parts);
                     }
-                } catch (Exception e) {
-                    System.err.println("Loi parse: " + line);
-                    setDefault(batch.get(j));
-                }
+                } catch (Exception e) {}
             }
 
-            // Nghỉ 2 giây giữa các lô
-            try { Thread.sleep(2000); } catch (InterruptedException e) {}
+            // 4. Map vào Batch
+            int countSuccess = 0;
+            for (int j = 0; j < batch.size(); j++) {
+                Post p = batch.get(j);
+                if (resultMap.containsKey(j)) {
+                    String[] parts = resultMap.get(j);
+                    try {
+                        p.setSentiment(normalizeSentiment(parts[1].trim()));
+                        
+                        // --- ĐÂY: Hàm này đảm bảo chỉ ra 1 Damage duy nhất ---
+                        p.setDamageType(normalizeDamage(parts[2].trim()));
+                        
+                        p.setReliefType(normalizeRelief(parts[3].trim()));
+                        p.setLocation(cleanValue(parts[4].trim()));
+                        countSuccess++;
+                    } catch (Exception e) { setDefault(p); }
+                } else {
+                    setDefault(p);
+                }
+            }
+            System.out.println("   -> Da map: " + countSuccess + "/" + batch.size());
+            
+            try { Thread.sleep(1000); } catch (InterruptedException e) {}
         }
+        System.out.println("=== HOAN TAT PHAN TICH ===");
     }
 
-    // Hàm set giá trị mặc định khi lỗi
+    // --- BỘ LỌC DAMAGE CHỈ LẤY 1 CÁI (PRIORITY MODE) ---
+    private String normalizeDamage(String raw) {
+        String lower = raw.toLowerCase();
+        
+        // Thứ tự kiểm tra này chính là thứ tự ưu tiên (Priority)
+        // Nếu bài viết có chữ "people" -> Lấy luôn People (kệ các cái khác)
+        if (lower.contains("people") || lower.contains("casualt") || lower.contains("death") || lower.contains("died")) {
+            return "People";
+        }
+        // Nếu không có người chết, mới xét đến hạ tầng
+        if (lower.contains("infrastructure") || lower.contains("house") || lower.contains("bridge") || lower.contains("road")) {
+            return "Infrastructure";
+        }
+        // Cuối cùng mới đến nông nghiệp
+        if (lower.contains("agriculture") || lower.contains("crop") || lower.contains("farm")) {
+            return "Agriculture";
+        }
+        
+        return "None";
+    }
+
+    // Các hàm khác giữ nguyên
+    private String normalizeSentiment(String raw) {
+        String lower = raw.toLowerCase();
+        if (lower.contains("positive")) return "Positive";
+        if (lower.contains("negative")) return "Negative";
+        return "Neutral";
+    }
+
+    private String normalizeRelief(String raw) {
+        String lower = raw.toLowerCase();
+        if (lower.contains("money")) return "Money";
+        if (lower.contains("good")) return "Goods";
+        if (lower.contains("force") || lower.contains("army") || lower.contains("police")) return "Forces";
+        return "None";
+    }
+
+    private String cleanValue(String input) {
+        if (input == null) return "Unknown";
+        if (input.contains(";")) return input.split(";")[0].trim();
+        if (input.contains(",")) return input.split(",")[0].trim();
+        return input;
+    }
+
     private void setDefault(Post p) {
-        if (p.getSentiment() == null) {
-            p.setSentiment("Neutral");
-            p.setDamageType("None");
-            p.setReliefType("None");
-            p.setLocation("Unknown");
-        }
+        p.setSentiment("Neutral");
+        p.setDamageType("None");
+        p.setReliefType("None");
+        p.setLocation("Unknown");
     }
 
-    // ==========================================================
-    // CÁC HÀM THỐNG KÊ (GIỮ NGUYÊN)
-    // ==========================================================
+    // --- THỐNG KÊ (LOGIC CŨ) ---
     public Map<String, Integer> getTrendStats(List<Post> posts) {
         Map<String, Integer> trends = new TreeMap<>();
         for (Post p : posts) {
@@ -115,7 +163,7 @@ public class DataAnalyzer {
         Map<String, Integer> locs = new HashMap<>();
         for (Post p : posts) {
             String location = p.getLocation();
-            if (location != null && !location.equalsIgnoreCase("Unknown") && !location.equalsIgnoreCase("None")) {
+            if (location != null && !isInvalid(location)) {
                 locs.put(location, locs.getOrDefault(location, 0) + 1);
             }
         }
@@ -147,11 +195,16 @@ public class DataAnalyzer {
         for (Post p : posts) {
             String relief = p.getReliefType();
             if (relief == null || relief.equalsIgnoreCase("None")) continue; 
+            
             result.putIfAbsent(relief, new HashMap<>());
             String sentiment = p.getSentiment();
             if (sentiment == null) sentiment = "Neutral";
             result.get(relief).put(sentiment, result.get(relief).getOrDefault(sentiment, 0) + 1);
         }
         return result;
+    }
+
+    private boolean isInvalid(String s) {
+        return s.equalsIgnoreCase("Unknown") || s.equalsIgnoreCase("None") || s.contains("Unknown");
     }
 }

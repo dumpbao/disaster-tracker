@@ -43,8 +43,6 @@ public class collectormanager {
             
             Map<String, String> raw = scraper.scrape(html);
             
-            System.out.println("DEBUG URL: " + url);
-            System.out.println("DEBUG RAW TITLE: " + raw.get("title"));
             
             NewsPostRaw post = parser.parse(raw, url, keyword);
 

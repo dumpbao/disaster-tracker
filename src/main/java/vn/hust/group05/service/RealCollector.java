@@ -1,14 +1,13 @@
 package vn.hust.group05.service;
 
-import com.app.collector.crawler.Crawler;
-import com.app.collector.crawler.VnExpressSeleniumCrawler;
+import com.app.collector.crawler.*;
 import com.app.collector.fetcher.SeleniumHtmlFetcher;
 import com.app.collector.fetcher.htmlFetcher;
 import com.app.collector.manager.collectormanager;
 import com.app.collector.model.NewsPostRaw;
 import com.app.collector.parser.NewsPostParser;
+import com.app.collector.scraper.NewsScraper;
 import com.app.collector.scraper.Scraper;
-import com.app.collector.scraper.VnExpressNewsScraper;
 import vn.hust.group05.model.Post;
 
 import java.time.LocalDate;
@@ -20,53 +19,73 @@ public class RealCollector implements IDataCollector {
 
     @Override
     public List<Post> collect(String keyword) {
-        System.out.println("Dang khoi dong Selenium (VnExpress)...");
+        System.out.println("=== BAT DAU CAO DU LIEU ===");
         
-        htmlFetcher fetcher = new SeleniumHtmlFetcher();
-        Crawler crawler = new VnExpressSeleniumCrawler();
-        Scraper scraper = new VnExpressNewsScraper();
+        // Khởi tạo các thành phần
+        htmlFetcher fetcher = new SeleniumHtmlFetcher(); 
         NewsPostParser parser = new NewsPostParser();
+        Scraper scraper = new NewsScraper(); 
 
-        collectormanager manager = new collectormanager(crawler, fetcher, scraper, parser);
+        List<Crawler> crawlers = new ArrayList<>();
+        crawlers.add(new VnExpressCrawler());  
+        crawlers.add(new VietnamnetCrawler());
 
+        // Lấy dữ liệu trong 30 ngày (hoặc tùy ông chỉnh)
         LocalDate to = LocalDate.now();
-        LocalDate from = to.minusDays(30); // Tìm trong 30 ngày
+        LocalDate from = to.minusDays(30);
 
-        List<NewsPostRaw> rawPosts = new ArrayList<>();
-        try {
-            rawPosts = manager.collect(keyword, from, to);
-        } catch (Exception e) {
-            System.out.println("Loi khi scrape: " + e.getMessage());
-        } finally {
-            if (fetcher instanceof SeleniumHtmlFetcher) {
-                ((SeleniumHtmlFetcher) fetcher).close();
-            }
-        }
-        
         List<Post> myPosts = new ArrayList<>();
-        
-        for (NewsPostRaw raw : rawPosts) {
-            String title = raw.getTitle();
-            String content = raw.getContent();
-            if (content != null && content.length() > 100) {
-                content = content.substring(0, 100) + "...";
-            }
-            String source = "VnExpress"; 
-            String url = raw.getUrl(); // Lấy URL từ crawler
 
-            String timestamp;
-            if (raw.getPublishedTime() != null) {
-                timestamp = raw.getPublishedTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-            } else {
-                timestamp = LocalDate.now().toString();
-            }
+        for (Crawler crawler : crawlers) {
+            String sourceName = crawler.getClass().getSimpleName().replace("Crawler", "");
+            System.out.println(">> Dang cao: " + sourceName);
 
-            // Truyền URL vào constructor mới
-            Post p = new Post(title, content, source, timestamp, url);
-            myPosts.add(p);
+            try {
+                collectormanager manager = new collectormanager(crawler, fetcher, scraper, parser);
+                List<NewsPostRaw> rawPosts = manager.collect(keyword, from, to);
+                
+                System.out.println("   + Tim thay " + rawPosts.size() + " bai.");
+
+                for (NewsPostRaw raw : rawPosts) {
+                    myPosts.add(convertRawToPost(raw, sourceName));
+                }
+
+            } catch (Exception e) {
+                System.err.println("Loi khi cao bao " + sourceName + ": " + e.getMessage());
+            }
         }
         
-        System.out.println("Da lay duoc " + myPosts.size() + " bai tu VnExpress.");
+        if (fetcher instanceof SeleniumHtmlFetcher) {
+            ((SeleniumHtmlFetcher) fetcher).close();
+        }
+
+        System.out.println("=== TONG CONG: " + myPosts.size() + " bai viet ===");
         return myPosts;
+    }
+
+    private Post convertRawToPost(NewsPostRaw raw, String sourceName) {
+        String title = raw.getTitle();
+        String content = raw.getContent();
+        
+        // Cắt ngắn nội dung để tránh nặng RAM
+        if (content != null && content.length() > 1500) {
+            content = content.substring(0, 1500) + "...";
+        }
+        
+        String url = raw.getUrl();
+        String timestamp;
+        
+        // QUAN TRỌNG: Format hiển thị ra màn hình là dd/MM/yyyy
+        DateTimeFormatter displayFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+        if (raw.getPublishedTime() != null) {
+            // Lấy thời gian chuẩn từ Parser và format lại
+            timestamp = raw.getPublishedTime().format(displayFormat);
+        } else {
+            // Fallback: Nếu vẫn lỗi thì lấy ngày hôm nay (nhưng format đúng kiểu VN)
+            timestamp = LocalDate.now().format(displayFormat);
+        }
+        
+        return new Post(title, content, sourceName, timestamp, url);
     }
 }

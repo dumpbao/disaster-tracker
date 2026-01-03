@@ -8,38 +8,30 @@ import java.nio.charset.StandardCharsets;
 
 public class GeminiService {
 
-    private static final String API_KEY = "AIzaSyASLw3kjZsJ-SKm2zUBlz38d7yJtZbBWrw"; 
-    
-    // --- SỬA THÀNH BẢN 2.0-FLASH (Bản ổn định, Quota cao) ---
-    // Model này có trong danh sách của bạn: "models/gemini-2.0-flash"
-    private static final String MODEL_NAME = "models/gemini-2.5-flash-lite";
+    private static final String API_KEY = "AIzaSyDUuH4iUkosm1ax_nlxShJDyKH-Y0iby3w"; // Nhớ điền API Key
+    private static final String MODEL_NAME = "models/gemini-2.5-flash"; // Dùng bản 2.0 Flash xử lý batch tốt hơn Lite
     
     private static final String API_URL = "https://generativelanguage.googleapis.com/v1beta/" 
                                           + MODEL_NAME 
                                           + ":generateContent?key=" + API_KEY;
 
-    public String askGemini(String newsContent) {
+    // Hàm này bây giờ chỉ nhận text và gửi đi, KHÔNG thêm prompt thừa
+    public String askGemini(String finalPrompt) {
         try {
-            // Prompt xử lý
-            String prompt = "Analyze this news (Title + Content) about storm/flood in Vietnam:\n" +
-                    "\"" + newsContent + "\"\n\n" +
-                    "Return a single string with format: Sentiment|DamageType|ReliefType|Location\n" +
-                    "Rules:\n" +
-                    "- Sentiment: Positive, Negative, Neutral\n" +
-                    "- DamageType: People, Infrastructure, Agriculture, None\n" +
-                    "- ReliefType: Money, Goods, Forces, None\n" +
-                    "- Location: Specific Province/City name (e.g. Hanoi, Lao Cai) or Unknown\n" +
-                    "Example output: Negative|People|None|Lao Cai";
-
+            // JSON Body chuẩn
             String jsonBody = "{\n" +
                     "  \"contents\": [\n" +
                     "    {\n" +
                     "      \"role\": \"user\",\n" +
                     "      \"parts\": [\n" +
-                    "        { \"text\": \"" + escapeJson(prompt) + "\" }\n" +
+                    "        { \"text\": \"" + escapeJson(finalPrompt) + "\" }\n" +
                     "      ]\n" +
                     "    }\n" +
-                    "  ]\n" +
+                    "  ],\n" +
+                    "  \"generationConfig\": {\n" +
+                    "       \"temperature\": 0.3,\n" + // Giảm nhiệt độ để kết quả ổn định, bớt sáng tạo linh tinh
+                    "       \"maxOutputTokens\": 8192\n" +
+                    "  }\n" +
                     "}";
 
             HttpClient client = HttpClient.newHttpClient();
@@ -51,40 +43,49 @@ public class GeminiService {
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             
-            // --- XỬ LÝ LỖI ---
-            if (response.statusCode() != 200) {
-                System.err.println("❌ LOI GOOGLE API (" + response.statusCode() + "): " + response.body());
-                return "Neutral|None|None|Unknown";
-            }
+            if (response.statusCode() != 200) System.out.print(response.statusCode() + response.body());
 
             return extractTextFromResponse(response.body());
 
         } catch (Exception e) {
             e.printStackTrace();
-            return "Neutral|None|None|Unknown";
+            return "";
         }
     }
 
     private String escapeJson(String input) {
         if (input == null) return "";
-        return input.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ").replace("\r", " ");
+        return input.replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+                    .replace("\n", "\\n")
+                    .replace("\r", "");
     }
 
     private String extractTextFromResponse(String jsonResponse) {
         try {
+            // Parsing thủ công để tránh thư viện ngoài, nhưng cần cẩn thận
             int textKeyIndex = jsonResponse.indexOf("\"text\"");
-            if (textKeyIndex == -1) return "Neutral|None|None|Unknown";
+            if (textKeyIndex == -1) return "";
 
             int startQuote = jsonResponse.indexOf("\"", textKeyIndex + 6);
-            if (startQuote == -1) return "Neutral|None|None|Unknown";
+            if (startQuote == -1) return "";
             
-            int endQuote = jsonResponse.indexOf("\"", startQuote + 1);
-            if (endQuote == -1) return "Neutral|None|None|Unknown";
+            // Tìm endQuote nhưng phải bỏ qua escaped quote (\")
+            int endQuote = startQuote + 1;
+            while (endQuote < jsonResponse.length()) {
+                if (jsonResponse.charAt(endQuote) == '"' && jsonResponse.charAt(endQuote - 1) != '\\') {
+                    break;
+                }
+                endQuote++;
+            }
+            
+            if (endQuote >= jsonResponse.length()) return "";
             
             String result = jsonResponse.substring(startQuote + 1, endQuote);
-            return result.replace("\\n", "").trim();
+            // Unescape ký tự xuống dòng để tách mảng sau này
+            return result.replace("\\n", "\n").trim();
         } catch (Exception e) {
-            return "Neutral|None|None|Unknown";
+            return "";
         }
     }
 }

@@ -7,12 +7,13 @@ import javafx.fxml.FXML;
 import javafx.scene.chart.*;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.util.StringConverter; // Nhớ import cái này
+import javafx.util.StringConverter;
 import vn.hust.group05.model.Post;
 import vn.hust.group05.service.*;
 
 import java.awt.Desktop;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -115,13 +116,37 @@ public class MainController {
         sentStats.forEach((k, v) -> { if (v > 0) pieData.add(new PieChart.Data(k, v)); });
         sentimentChart.setData(pieData);
 
-        // B. Damage
-        Map<String, Integer> dmgStats = analyzer.getDamageStats(posts);
+        // =========================================================
+        // B. Damage (ĐÃ SỬA: TÁCH CHUỖI "People;Infrastructure")
+        // =========================================================
+        Map<String, Integer> rawDmgStats = analyzer.getDamageStats(posts);
+        Map<String, Integer> cleanDmgStats = new HashMap<>();
+
+        // Logic tách chuỗi cho Damage Type
+        for (Map.Entry<String, Integer> entry : rawDmgStats.entrySet()) {
+            String rawType = entry.getKey();
+            int count = entry.getValue();
+
+            if (rawType != null && !rawType.isEmpty()) {
+                String[] types = rawType.split(";"); // Tách bằng dấu chấm phẩy
+                for (String t : types) {
+                    String cleanType = t.trim();
+                    if (!cleanType.isEmpty()) {
+                        // Cộng dồn vào map mới
+                        cleanDmgStats.put(cleanType, cleanDmgStats.getOrDefault(cleanType, 0) + count);
+                    }
+                }
+            }
+        }
+
         XYChart.Series<String, Number> dmgSeries = new XYChart.Series<>();
         dmgSeries.setName("Cases");
-        dmgStats.forEach((k, v) -> dmgSeries.getData().add(new XYChart.Data<>(k, v)));
+        cleanDmgStats.forEach((k, v) -> dmgSeries.getData().add(new XYChart.Data<>(k, v)));
+        
         damageChart.getData().clear();
         damageChart.getData().add(dmgSeries);
+        // =========================================================
+
 
         // C. Relief
         reliefChart.getData().clear();
@@ -144,14 +169,37 @@ public class MainController {
         analyzer.getTrendStats(posts).forEach((k, v) -> trendSeries.getData().add(new XYChart.Data<>(k, v)));
         trendChart.getData().add(trendSeries);
 
-        // E. Location
+
+        // =========================================================
+        // E. Location (ĐÃ SỬA: TÁCH CHUỖI TỈNH THÀNH PHỐ)
+        // =========================================================
         locationChart.getData().clear();
         XYChart.Series<String, Number> locSeries = new XYChart.Series<>();
         locSeries.setName("Mentions");
-        analyzer.getLocationStats(posts).forEach((k, v) -> {
+
+        Map<String, Integer> rawStats = analyzer.getLocationStats(posts);
+        Map<String, Integer> cleanStats = new HashMap<>();
+
+        for (Map.Entry<String, Integer> entry : rawStats.entrySet()) {
+            String rawLocation = entry.getKey();
+            int count = entry.getValue();
+
+            if (rawLocation != null && !rawLocation.isEmpty()) {
+                String[] locations = rawLocation.split(";");
+                for (String loc : locations) {
+                    String cleanLoc = loc.trim();
+                    if (!cleanLoc.isEmpty()) {
+                        cleanStats.put(cleanLoc, cleanStats.getOrDefault(cleanLoc, 0) + count);
+                    }
+                }
+            }
+        }
+
+        cleanStats.forEach((k, v) -> {
             if (v > 0) locSeries.getData().add(new XYChart.Data<>(k, v));
         });
         locationChart.getData().add(locSeries);
+        // =========================================================
     }
 
     private void openWebpage(String urlString) {
@@ -172,7 +220,6 @@ public class MainController {
         axis.setTickLabelFormatter(new StringConverter<Number>() {
             @Override
             public String toString(Number object) {
-                // Nếu là số nguyên thì hiện, số lẻ thì ẩn
                 if (object.doubleValue() % 1 == 0) {
                     return String.format("%.0f", object.doubleValue());
                 }

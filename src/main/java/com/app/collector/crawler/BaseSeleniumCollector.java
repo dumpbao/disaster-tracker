@@ -1,6 +1,7 @@
 package com.app.collector.crawler;
 
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.PageLoadStrategy;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -16,15 +17,19 @@ public abstract class BaseSeleniumCollector {
     protected void open() {
         if (driver != null) return;
 
-        // Nếu chromedriver.exe chưa nằm trong PATH
-        // System.setProperty("webdriver.chrome.driver", "C:/path/to/chromedriver.exe");
 
         ChromeOptions options = new ChromeOptions();
+        options.setPageLoadStrategy(PageLoadStrategy.EAGER);
+        
         options.addArguments(
                 "--disable-blink-features=AutomationControlled",
                 "--disable-notifications",
                 "--disable-infobars",
-                "--start-maximized"
+                "--start-maximized",
+                "--disable-gpu",
+                "--disable-extensions",
+                "--disable-dev-shm-usage",
+                "--blink-settings=imagesEnabled=false"
         );
 
         driver = new ChromeDriver(options);
